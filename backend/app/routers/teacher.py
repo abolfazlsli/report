@@ -13,6 +13,7 @@ from ..models import (
     Role,
     Score,
     User,
+    Scope
 )
 from ..services import build_report, build_sheet, get_or_404, load_class_subject, score_out
 

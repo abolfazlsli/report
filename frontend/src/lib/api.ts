@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react"
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8060";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const TOKEN_KEY = "report_token";
 
 export function getToken(): string | null {
