@@ -281,7 +281,6 @@ class Score(Base):
     teacher: Mapped[User | None] = relationship()
 
 
-<<<<<<< HEAD
 class CriterionScore(Base):
     """Descriptive rating (1..5) of one student on one criterion, in one enrollment."""
 
@@ -308,31 +307,3 @@ class CriterionScore(Base):
 
     criterion: Mapped[Criterion] = relationship()
     teacher: Mapped[User | None] = relationship()
-=======
-class EvaluationCriteria (BasicTable) :
-    __tablename__ = "evaluation_criteria"
-
-    name : Mapped[str] = mapped_column(nullable=False)
-    scope_id : Mapped[int] = mapped_column(
-        ForeignKey("scope.id") , 
-        nullable=False,
-    )
-
-
-class EvaluationCriteriaScore(BasicTable) :
-    __tablename__ = "evaluation_criteria_score"
-
-    user_id  : Mapped[int] = mapped_column(
-        ForeignKey("users.id") ,
-        nullable=False
-    )
-
-    evaluation_criteria_id : Mapped[int] = mapped_column(
-        ForeignKey("evaluation_criteria.id")
-    )
-    score : Mapped[int] = mapped_column(
-        nullable=False
-    )  # from 0 to 5 
-    evaluation_criteria : Mapped[EvaluationCriteria] = relationship()
-    
->>>>>>> 5baa8300a8ba1b7d6c03569c2c6f56c399bb43d6
