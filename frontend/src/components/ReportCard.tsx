@@ -1,13 +1,15 @@
 "use client";
 
-import { Card, Col, Empty, Flex, Row, Select, Table, Tag, Typography } from "antd";
+import { BarChartOutlined, BookOutlined, StarOutlined, TrophyOutlined } from "@ant-design/icons";
+import { Card, Col, Empty, Flex, Row, Select, Table, Tabs, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
 import { faDate, faNum, ltr, STATUS_LABEL } from "@/lib/format";
 import { byNum, byText, scoreFilter, searchFilter, tableDefaults, valueFilter } from "@/lib/table";
-import type { Report, ReportEnrollment, ReportSubject, Score } from "@/lib/types";
+import type { Rating, Report, ReportEnrollment, ReportSubject, Score } from "@/lib/types";
 import { AverageBars, Legend, seriesColor, TrendChart, type TrendSeries } from "./charts";
-import { ScoreValue, StatCard } from "./ui";
+import { ReportPdfButton } from "./ReportPdf";
+import { RatingValue, ScoreValue, StatCard } from "./ui";
 
 const enrollmentLabel = (e: ReportEnrollment) => `پایه ${e.grade_name} - کلاس ${e.class_name} (${ltr(e.year_name)})`;
 
@@ -89,12 +91,26 @@ export function ReportCard({ report }: { report: Report }) {
       sorter: byNum((s) => s.scores.at(-1)?.value),
     },
     {
+      title: "میانگین کلاس",
+      key: "class_average",
+      render: (_, s) => <span className="tabular">{faNum(s.class_average)}</span>,
+      sorter: byNum((s) => s.class_average),
+    },
+    {
+      title: "توصیفی",
+      key: "rating",
+      render: (_, s) => (s.ratings.length ? <RatingValue value={s.rating_average} showLabel={false} /> : "—"),
+      sorter: byNum((s) => s.rating_average),
+    },
+    {
       title: "میانگین",
       key: "average",
       render: (_, s) => <ScoreValue value={s.average} />,
       ...scoreFilter((s) => s.average),
     },
   ];
+  const ratingAverages = current.subjects.map((s) => s.rating_average).filter((v): v is number => v !== null);
+  const ratingAverage = ratingAverages.length ? ratingAverages.reduce((a, b) => a + b, 0) / ratingAverages.length : null;
 
   const historyColumns: ColumnsType<ReportEnrollment> = [
     {
@@ -134,22 +150,8 @@ export function ReportCard({ report }: { report: Report }) {
 
   return (
     <Flex vertical gap={20}>
-      <Row gutter={[12, 12]}>
-        <Col xs={12} md={6}>
-          <StatCard title="دانش‌آموز" value={report.student.full_name} />
-        </Col>
-        <Col xs={12} md={6}>
-          <StatCard title="کلاس فعلی" value={<span style={{ fontSize: 14 }}>{report.current_class ?? "—"}</span>} />
-        </Col>
-        <Col xs={12} md={6}>
-          <StatCard title="معدل این دوره" value={<ScoreValue value={current.average} />} />
-        </Col>
-        <Col xs={12} md={6}>
-          <StatCard title="تعداد نمرات این دوره" value={scoreCount} />
-        </Col>
-      </Row>
-
-      <Flex wrap gap={12} align="center">
+      <Flex wrap gap={12} align="center" justify="space-between">
+        <Flex wrap gap={12} align="center">
         <Select
           value={enrollmentId}
           onChange={(v) => {
@@ -161,9 +163,39 @@ export function ReportCard({ report }: { report: Report }) {
           aria-label="دوره تحصیلی"
         />
         <Tag color={current.status === "active" ? "blue" : "default"}>{STATUS_LABEL[current.status]}</Tag>
+          {current.unit_name && <Tag>{current.unit_name}</Tag>}
+        </Flex>
+        <ReportPdfButton report={report} enrollment={current} />
       </Flex>
 
+      <Row gutter={[12, 12]}>
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard
+            icon={<BarChartOutlined />}
+            title="معدل این دوره"
+            value={<ScoreValue value={current.average} />}
+            hint={current.class_average !== null ? `میانگین کلاس: ${faNum(current.class_average)}` : undefined}
+          />
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard
+            icon={<TrophyOutlined />}
+            tone="orange"
+            title="رتبه در کلاس"
+            value={current.rank ? faNum(current.rank) : "—"}
+            suffix={current.rank ? `از ${faNum(current.class_size)}` : undefined}
+          />
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard icon={<StarOutlined />} tone="pink" title="میانگین ارزشیابی توصیفی" value={<RatingValue value={ratingAverage} showLabel={false} />} />
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <StatCard icon={<BookOutlined />} tone="green" title="تعداد نمرات این دوره" value={scoreCount} hint={`${faNum(current.subjects.length)} درس`} />
+        </Col>
+      </Row>
+
       <Card
+        className="soft"
         title="روند نمرات"
         extra={
           <Select
@@ -189,19 +221,29 @@ export function ReportCard({ report }: { report: Report }) {
         )}
       </Card>
 
-      <Card title={`کارنامه دروس — ${enrollmentLabel(current)}`}>
+      <Card className="soft" title={`کارنامه دروس — ${enrollmentLabel(current)}`}>
         <Table<ReportSubject>
           {...tableDefaults}
           rowKey="class_subject_id"
           columns={subjectColumns}
           dataSource={current.subjects}
           expandable={{
-            rowExpandable: (s) => s.scores.length > 0,
-            expandedRowRender: (s) => <ScoreList scores={s.scores} />,
+            rowExpandable: (s) => s.scores.length > 0 || s.ratings.length > 0,
+            expandedRowRender: (s) => (
+              <Tabs
+                size="small"
+                items={[
+                  { key: "scores", label: `نمرات (${faNum(s.scores.length)})`, children: <ScoreList scores={s.scores} /> },
+                  ...(s.ratings.length
+                    ? [{ key: "ratings", label: "ارزشیابی توصیفی", children: <RatingList ratings={s.ratings} /> }]
+                    : []),
+                ]}
+              />
+            ),
           }}
           summary={() => (
             <Table.Summary.Row>
-              <Table.Summary.Cell index={0} colSpan={5}>
+              <Table.Summary.Cell index={0} colSpan={7}>
                 <strong>معدل کل دوره</strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={1}>
@@ -212,7 +254,7 @@ export function ReportCard({ report }: { report: Report }) {
         />
       </Card>
 
-      <Card title="سابقه تحصیلی">
+      <Card className="soft" title="سابقه تحصیلی">
         {enrollments.length > 1 && (
           <AverageBars
             data={enrollments.map((e) => ({
@@ -241,4 +283,24 @@ function ScoreList({ scores }: { scores: Score[] }) {
     { title: "ثبت‌کننده", dataIndex: "teacher_name", render: (v) => v ?? "—", ...valueFilter(scores, (x) => x.teacher_name) },
   ];
   return <Table<Score> {...tableDefaults} size="small" rowKey="id" columns={columns} dataSource={scores} />;
+}
+
+export function RatingList({ ratings }: { ratings: Rating[] }) {
+  return (
+    <Flex vertical gap={0}>
+      {ratings.map((r) => (
+        <Flex key={r.criterion_id} justify="space-between" align="center" wrap gap={8} style={{ padding: "8px 4px", borderBottom: "1px dashed var(--line)" }}>
+          <div>
+            <div style={{ fontWeight: 500 }}>{r.title}</div>
+            {(r.note || r.description) && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {r.note ?? r.description}
+              </Typography.Text>
+            )}
+          </div>
+          <RatingValue value={r.value} compact />
+        </Flex>
+      ))}
+    </Flex>
+  );
 }

@@ -1,6 +1,7 @@
 """Database models.
 
 Structure:
+  Unit (واحد آموزشی، با نام دلخواه مدرسه) ─> ClassRoom
   AcademicYear (دوره / سال تحصیلی) ─┐
   Grade (پایه) ─────────────────────┼─> ClassRoom (کلاس) ─> ClassSubject (درس کلاس + معلم)
                                      │         │
@@ -20,8 +21,10 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    CheckConstraint,
     ForeignKey,
     Index,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -59,8 +62,17 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Profile photo (small JPEG/PNG/WebP). Deferred so listing users never loads the bytes.
+    avatar: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    avatar_type: Mapped[str | None] = mapped_column(String(20))
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     enrollments: Mapped[list["Enrollment"]] = relationship(back_populates="student")
+
+    @property
+    def avatar_version(self) -> int | None:
+        """Changes whenever the photo changes; the client uses it to bust its cache."""
+        return int(self.avatar_updated_at.timestamp()) if self.avatar_updated_at else None
 
 
 class AcademicYear(Base):
@@ -87,6 +99,31 @@ class Subject(Base):
     name: Mapped[str] = mapped_column(String(80), unique=True)
 
 
+class Unit(Base):
+    """A school-defined division (e.g. «واحد ۷» or «دبیرستان»). Every class belongs to one."""
+
+    __tablename__ = "units"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    description: Mapped[str | None] = mapped_column(String(255))
+
+
+class Criterion(Base):
+    """A descriptive-evaluation item of a subject, rated 1..5 by the teacher."""
+
+    __tablename__ = "criteria"
+    __table_args__ = (UniqueConstraint("subject_id", "title"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(String(255))
+    order: Mapped[int] = mapped_column(default=0)
+
+    subject: Mapped[Subject] = relationship()
+
+
 class ClassRoom(Base):
     __tablename__ = "classes"
     __table_args__ = (UniqueConstraint("name", "grade_id", "academic_year_id"),)
@@ -94,11 +131,14 @@ class ClassRoom(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(50))
     grade_id: Mapped[int] = mapped_column(ForeignKey("grades.id", ondelete="RESTRICT"))
+    # Nullable only so classes created before units existed keep working.
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id", ondelete="RESTRICT"), index=True)
     academic_year_id: Mapped[int] = mapped_column(
         ForeignKey("academic_years.id", ondelete="RESTRICT")
     )
 
     grade: Mapped[Grade] = relationship()
+    unit: Mapped[Unit | None] = relationship()
     academic_year: Mapped[AcademicYear] = relationship()
     subjects: Mapped[list["ClassSubject"]] = relationship(
         back_populates="class_room", cascade="all, delete-orphan"
@@ -177,4 +217,32 @@ class Score(Base):
 
     enrollment: Mapped[Enrollment] = relationship(back_populates="scores")
     class_subject: Mapped[ClassSubject] = relationship(back_populates="scores")
+    teacher: Mapped[User | None] = relationship()
+
+
+class CriterionScore(Base):
+    """Descriptive rating (1..5) of one student on one criterion, in one enrollment."""
+
+    __tablename__ = "criterion_scores"
+    __table_args__ = (
+        UniqueConstraint("enrollment_id", "criterion_id"),
+        CheckConstraint("value BETWEEN 1 AND 5", name="ck_criterion_score_range"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enrollment_id: Mapped[int] = mapped_column(
+        ForeignKey("enrollments.id", ondelete="CASCADE"), index=True
+    )
+    criterion_id: Mapped[int] = mapped_column(ForeignKey("criteria.id", ondelete="RESTRICT"))
+    class_subject_id: Mapped[int] = mapped_column(
+        ForeignKey("class_subjects.id", ondelete="RESTRICT"), index=True
+    )
+    teacher_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    value: Mapped[int]
+    note: Mapped[str | None] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    criterion: Mapped[Criterion] = relationship()
     teacher: Mapped[User | None] = relationship()

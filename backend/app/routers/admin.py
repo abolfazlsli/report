@@ -11,16 +11,21 @@ from ..models import (
     AcademicYear,
     ClassRoom,
     ClassSubject,
+    Criterion,
+    CriterionScore,
     Enrollment,
     EnrollmentStatus,
     Grade,
     Role,
     Score,
     Subject,
+    Unit,
     User,
 )
 from ..security import hash_password
 from ..services import (
+    average,
+    build_rating_sheet,
     build_report,
     build_sheet,
     class_label,
@@ -46,6 +51,7 @@ def ensure_unique(db: Session, model, column, value, message: str, exclude_id: i
 def class_query():
     return select(ClassRoom).options(
         selectinload(ClassRoom.grade),
+        selectinload(ClassRoom.unit),
         selectinload(ClassRoom.academic_year),
         selectinload(ClassRoom.enrollments),
     )
@@ -73,7 +79,74 @@ def stats(db: Session = Depends(get_db)):
         .order_by(Score.created_at.desc(), Score.id.desc())
         .limit(10)
     ).all()
+    year_filter = ClassRoom.academic_year_id == (current_year.id if current_year else -1)
+
+    units = []
+    for u in db.scalars(select(Unit).order_by(Unit.name)):
+        unit_scores = db.scalars(
+            select(Score.value)
+            .join(ClassSubject, ClassSubject.id == Score.class_subject_id)
+            .join(ClassRoom, ClassRoom.id == ClassSubject.class_id)
+            .where(ClassRoom.unit_id == u.id, year_filter)
+        ).all()
+        units.append(
+            {
+                "id": u.id,
+                "name": u.name,
+                "classes": count(
+                    select(func.count(ClassRoom.id)).where(ClassRoom.unit_id == u.id, year_filter)
+                ),
+                "students": count(
+                    select(func.count(Enrollment.id))
+                    .join(ClassRoom, ClassRoom.id == Enrollment.class_id)
+                    .where(ClassRoom.unit_id == u.id, Enrollment.status == EnrollmentStatus.active)
+                ),
+                "average": average(unit_scores),
+            }
+        )
+
+    year_scores = db.execute(
+        select(Subject.name, Score.value)
+        .join(ClassSubject, ClassSubject.id == Score.class_subject_id)
+        .join(Subject, Subject.id == ClassSubject.subject_id)
+        .join(ClassRoom, ClassRoom.id == ClassSubject.class_id)
+        .where(year_filter)
+    ).all()
+    distribution = {"good": 0, "ok": 0, "warning": 0, "critical": 0}
+    by_subject: dict[str, list[float]] = {}
+    for name, value in year_scores:
+        v = float(value)
+        level = "good" if v >= 17 else "ok" if v >= 14 else "warning" if v >= 10 else "critical"
+        distribution[level] += 1
+        by_subject.setdefault(name, []).append(v)
+
+    # Descriptive ratings: how many of the expected (student x criterion) cells are filled.
+    expected = count(
+        select(func.count())
+        .select_from(Enrollment)
+        .join(ClassRoom, ClassRoom.id == Enrollment.class_id)
+        .join(ClassSubject, ClassSubject.class_id == ClassRoom.id)
+        .join(Criterion, Criterion.subject_id == ClassSubject.subject_id)
+        .where(year_filter, Enrollment.status == EnrollmentStatus.active)
+    )
+    filled = count(
+        select(func.count(CriterionScore.id))
+        .join(Enrollment, Enrollment.id == CriterionScore.enrollment_id)
+        .join(ClassRoom, ClassRoom.id == Enrollment.class_id)
+        .where(year_filter, Enrollment.status == EnrollmentStatus.active)
+    )
+
     return {
+        "units": units,
+        "distribution": distribution,
+        "subject_averages": sorted(
+            ({"name": n, "average": average(v), "count": len(v)} for n, v in by_subject.items()),
+            key=lambda x: x["name"],
+        ),
+        "year_score_count": len(year_scores),
+        "year_average": average(v for _, v in year_scores),
+        "ratings": {"filled": filled, "expected": expected},
+        "criteria": count(select(func.count(Criterion.id))),
         "students": count(select(func.count()).where(User.role == Role.student)),
         "teachers": count(select(func.count()).where(User.role == Role.teacher)),
         "classes": count(
@@ -309,14 +382,142 @@ def delete_subject(subject_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
+# ======================= units (واحد) =======================
+
+
+def _unit_out(db: Session, u: Unit) -> schemas.UnitOut:
+    return schemas.UnitOut(
+        id=u.id,
+        name=u.name,
+        description=u.description,
+        class_count=db.scalar(select(func.count(ClassRoom.id)).where(ClassRoom.unit_id == u.id)) or 0,
+        student_count=db.scalar(
+            select(func.count(Enrollment.id))
+            .join(ClassRoom, ClassRoom.id == Enrollment.class_id)
+            .where(ClassRoom.unit_id == u.id, Enrollment.status == EnrollmentStatus.active)
+        )
+        or 0,
+    )
+
+
+@router.get("/units", response_model=list[schemas.UnitOut])
+def list_units(db: Session = Depends(get_db)):
+    return [_unit_out(db, u) for u in db.scalars(select(Unit).order_by(Unit.name))]
+
+
+@router.post("/units", response_model=schemas.UnitOut, status_code=201)
+def create_unit(data: schemas.UnitIn, db: Session = Depends(get_db)):
+    name = data.name.strip()
+    ensure_unique(db, Unit, Unit.name, name, "واحدی با این نام وجود دارد")
+    unit = Unit(name=name, description=(data.description or "").strip() or None)
+    db.add(unit)
+    db.commit()
+    return _unit_out(db, unit)
+
+
+@router.patch("/units/{unit_id}", response_model=schemas.UnitOut)
+def update_unit(unit_id: int, data: schemas.UnitIn, db: Session = Depends(get_db)):
+    unit = get_or_404(db, Unit, unit_id, "واحد یافت نشد")
+    name = data.name.strip()
+    ensure_unique(db, Unit, Unit.name, name, "واحدی با این نام وجود دارد", unit.id)
+    unit.name, unit.description = name, (data.description or "").strip() or None
+    db.commit()
+    return _unit_out(db, unit)
+
+
+@router.delete("/units/{unit_id}", status_code=204)
+def delete_unit(unit_id: int, db: Session = Depends(get_db)):
+    unit = get_or_404(db, Unit, unit_id, "واحد یافت نشد")
+    if db.scalar(select(ClassRoom.id).where(ClassRoom.unit_id == unit.id).limit(1)):
+        raise HTTPException(400, "این واحد کلاس دارد و قابل حذف نیست")
+    db.delete(unit)
+    db.commit()
+
+
+# ======================= descriptive criteria (نمره توصیفی) =======================
+
+
+def _criterion_out(db: Session, c: Criterion) -> schemas.CriterionOut:
+    out = schemas.CriterionOut.model_validate(c)
+    out.used_count = (
+        db.scalar(select(func.count(CriterionScore.id)).where(CriterionScore.criterion_id == c.id))
+        or 0
+    )
+    return out
+
+
+@router.get("/criteria", response_model=list[schemas.CriterionOut])
+def list_criteria(subject_id: int | None = None, db: Session = Depends(get_db)):
+    stmt = select(Criterion).order_by(Criterion.subject_id, Criterion.order, Criterion.id)
+    if subject_id:
+        stmt = stmt.where(Criterion.subject_id == subject_id)
+    return [_criterion_out(db, c) for c in db.scalars(stmt)]
+
+
+@router.post("/criteria", response_model=schemas.CriterionOut, status_code=201)
+def create_criterion(data: schemas.CriterionIn, db: Session = Depends(get_db)):
+    get_or_404(db, Subject, data.subject_id, "درس یافت نشد")
+    title = data.title.strip()
+    exists = db.scalar(
+        select(Criterion.id).where(Criterion.subject_id == data.subject_id, Criterion.title == title)
+    )
+    if exists:
+        raise HTTPException(400, "این مورد برای این درس قبلاً تعریف شده است")
+    c = Criterion(
+        subject_id=data.subject_id,
+        title=title,
+        description=(data.description or "").strip() or None,
+        order=data.order,
+    )
+    db.add(c)
+    db.commit()
+    return _criterion_out(db, c)
+
+
+@router.patch("/criteria/{criterion_id}", response_model=schemas.CriterionOut)
+def update_criterion(criterion_id: int, data: schemas.CriterionUpdate, db: Session = Depends(get_db)):
+    c = get_or_404(db, Criterion, criterion_id, "مورد ارزشیابی یافت نشد")
+    fields = data.model_dump(exclude_unset=True)
+    if fields.get("title"):
+        title = fields["title"].strip()
+        dup = db.scalar(
+            select(Criterion.id).where(
+                Criterion.subject_id == c.subject_id, Criterion.title == title, Criterion.id != c.id
+            )
+        )
+        if dup:
+            raise HTTPException(400, "این مورد برای این درس قبلاً تعریف شده است")
+        c.title = title
+    if "description" in fields:
+        c.description = (fields["description"] or "").strip() or None
+    if fields.get("order") is not None:
+        c.order = fields["order"]
+    db.commit()
+    return _criterion_out(db, c)
+
+
+@router.delete("/criteria/{criterion_id}", status_code=204)
+def delete_criterion(criterion_id: int, db: Session = Depends(get_db)):
+    c = get_or_404(db, Criterion, criterion_id, "مورد ارزشیابی یافت نشد")
+    if db.scalar(select(CriterionScore.id).where(CriterionScore.criterion_id == c.id).limit(1)):
+        raise HTTPException(400, "برای این مورد نمره توصیفی ثبت شده و قابل حذف نیست")
+    db.delete(c)
+    db.commit()
+
+
 # ======================= classes (کلاس) =======================
 
 
 @router.get("/classes", response_model=list[schemas.ClassOut])
 def list_classes(
-    year_id: int | None = None, grade_id: int | None = None, db: Session = Depends(get_db)
+    year_id: int | None = None,
+    grade_id: int | None = None,
+    unit_id: int | None = None,
+    db: Session = Depends(get_db),
 ):
     stmt = class_query()
+    if unit_id:
+        stmt = stmt.where(ClassRoom.unit_id == unit_id)
     if year_id:
         stmt = stmt.where(ClassRoom.academic_year_id == year_id)
     if grade_id:
@@ -331,6 +532,7 @@ def list_classes(
 @router.post("/classes", response_model=schemas.ClassOut, status_code=201)
 def create_class(data: schemas.ClassIn, db: Session = Depends(get_db)):
     get_or_404(db, Grade, data.grade_id, "پایه یافت نشد")
+    get_or_404(db, Unit, data.unit_id, "واحد یافت نشد")
     get_or_404(db, AcademicYear, data.academic_year_id, "دوره یافت نشد")
     exists = db.scalar(
         select(ClassRoom.id).where(
@@ -341,7 +543,12 @@ def create_class(data: schemas.ClassIn, db: Session = Depends(get_db)):
     )
     if exists:
         raise HTTPException(400, "این کلاس در این پایه و دوره وجود دارد")
-    c = ClassRoom(name=data.name.strip(), grade_id=data.grade_id, academic_year_id=data.academic_year_id)
+    c = ClassRoom(
+        name=data.name.strip(),
+        grade_id=data.grade_id,
+        unit_id=data.unit_id,
+        academic_year_id=data.academic_year_id,
+    )
     db.add(c)
     db.commit()
     return class_out(db.scalar(class_query().where(ClassRoom.id == c.id)))
@@ -385,6 +592,9 @@ def update_class(class_id: int, data: schemas.ClassUpdate, db: Session = Depends
     c = get_or_404(db, ClassRoom, class_id, "کلاس یافت نشد")
     if data.name:
         c.name = data.name.strip()
+    if data.unit_id is not None:
+        get_or_404(db, Unit, data.unit_id, "واحد یافت نشد")
+        c.unit_id = data.unit_id
     db.commit()
     return class_out(db.scalar(class_query().where(ClassRoom.id == c.id)))
 
@@ -450,6 +660,11 @@ def delete_class_subject(class_subject_id: int, db: Session = Depends(get_db)):
 @router.get("/class-subjects/{class_subject_id}/sheet", response_model=schemas.SheetOut)
 def class_subject_sheet(class_subject_id: int, db: Session = Depends(get_db)):
     return build_sheet(db, load_class_subject(db, class_subject_id))
+
+
+@router.get("/class-subjects/{class_subject_id}/ratings", response_model=schemas.RatingSheetOut)
+def class_subject_ratings(class_subject_id: int, db: Session = Depends(get_db)):
+    return build_rating_sheet(db, load_class_subject(db, class_subject_id))
 
 
 # ---------- students of a class ----------

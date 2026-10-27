@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Loading, PageHeader, useAction } from "@/components/ui";
+import { UserAvatar } from "@/components/UserAvatar";
 import { api, useApi } from "@/lib/api";
 import { ROLE_LABEL } from "@/lib/format";
 import { byText, searchFilter, tableDefaults, valueFilter } from "@/lib/table";
@@ -35,7 +36,12 @@ function Users() {
     {
       title: "نام",
       dataIndex: "full_name",
-      render: (v, u) => (role === "student" ? <Link href={`/admin/students/${u.id}`}>{v}</Link> : v),
+      render: (v, u) => (
+        <Flex align="center" gap={10}>
+          <UserAvatar user={u} size={30} />
+          {role === "student" ? <Link href={`/admin/students/${u.id}`}>{v}</Link> : v}
+        </Flex>
+      ),
       sorter: byText((u) => u.full_name),
       defaultSortOrder: "ascend",
       ...searchFilter((u) => u.full_name, "نام…"),

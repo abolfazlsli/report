@@ -9,6 +9,8 @@ interface AuthState {
   loading: boolean;
   login: (username: string, password: string) => Promise<User>;
   logout: () => void;
+  /** Replace the signed-in user (e.g. after changing the profile photo). */
+  updateUser: (u: User) => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -51,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateUser: setUser }}>
       {children}
     </AuthContext.Provider>
   );

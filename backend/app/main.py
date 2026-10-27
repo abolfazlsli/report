@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from .config import settings
-from .database import Base, engine
+from .database import engine, init_schema
 from .routers import admin, auth, student, teacher
 
 
@@ -15,7 +15,7 @@ from .routers import admin, auth, student, teacher
 async def lifespan(_: FastAPI):
     # For an MVP the schema is created on startup; move to Alembic migrations
     # before the schema starts changing in production.
-    Base.metadata.create_all(engine)
+    init_schema()
     yield
 
 

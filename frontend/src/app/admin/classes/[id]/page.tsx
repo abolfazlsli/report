@@ -10,13 +10,14 @@ import { Loading, PageHeader, useAction } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { faDate, faNum, ltr, STATUS_LABEL } from "@/lib/format";
 import { byNum, byText, searchFilter, tableDefaults, valueFilter } from "@/lib/table";
-import type { ClassDetail, ClassSubject, Enrollment, Subject, User } from "@/lib/types";
+import type { ClassDetail, ClassSubject, Enrollment, Subject, Unit, User } from "@/lib/types";
 
 export default function ClassDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const run = useAction();
   const { data, error, loading, reload } = useApi<ClassDetail>(`/admin/classes/${id}`);
+  const units = useApi<Unit[]>("/admin/units");
 
   if (loading && !data) return <Loading />;
   if (error || !data) return <Alert type="error" title={error ?? "کلاس یافت نشد"} showIcon />;
@@ -29,9 +30,20 @@ export default function ClassDetailPage() {
       <PageHeader
         back={{ href: "/admin/classes", label: "همه کلاس‌ها" }}
         title={`پایه ${data.grade.name} - کلاس ${data.name}`}
-        subtitle={`دوره ${ltr(data.academic_year.name)} · ${faNum(active.length)} دانش‌آموز فعال`}
+        subtitle={`${data.unit ? data.unit.name + " · " : ""}دوره ${ltr(data.academic_year.name)} · ${faNum(active.length)} دانش‌آموز فعال`}
         actions={
           <>
+            <Select
+              value={data.unit?.id}
+              placeholder="تعیین واحد"
+              style={{ minWidth: 180 }}
+              options={(units.data ?? []).map((u) => ({ value: u.id, label: u.name }))}
+              onChange={async (unit_id) =>
+                (await run(() => api(`/admin/classes/${data.id}`, { method: "PATCH", body: { unit_id } }), "واحد کلاس تغییر کرد")) &&
+                reload()
+              }
+              aria-label="واحد کلاس"
+            />
             {active.length > 0 && (
               <Link href={`/admin/promote?source=${data.id}`}>
                 <Button icon={<RiseOutlined />}>ارتقا / انتقال دانش‌آموزان</Button>
@@ -129,7 +141,12 @@ function SubjectsCard({ data, reload }: { data: ClassDetail; reload: () => void 
     {
       title: "نمرات",
       dataIndex: "score_count",
-      render: (v, cs) => <Link href={`/admin/sheets/${cs.id}`}>{faNum(v)} نمره</Link>,
+      render: (v, cs) => (
+        <Flex gap={12}>
+          <Link href={`/admin/sheets/${cs.id}`}>{faNum(v)} نمره</Link>
+          <Link href={`/admin/sheets/${cs.id}?tab=ratings`}>توصیفی</Link>
+        </Flex>
+      ),
       sorter: byNum((cs) => cs.score_count),
     },
     {
@@ -154,7 +171,7 @@ function SubjectsCard({ data, reload }: { data: ClassDetail; reload: () => void 
   ];
 
   return (
-    <Card title="دروس و معلمان کلاس" style={{ height: "100%" }}>
+    <Card className="soft" title="دروس و معلمان کلاس" style={{ height: "100%" }}>
       <Form
         form={form}
         layout="inline"
@@ -235,6 +252,7 @@ function StudentsCard({ data, active, reload }: { data: ClassDetail; active: Enr
 
   return (
     <Card
+      className="soft"
       title="دانش‌آموزان کلاس"
       extra={
         <Button type="primary" size="small" icon={<UserAddOutlined />} onClick={() => setAdding(true)}>
@@ -349,7 +367,7 @@ function HistoryCard({ history }: { history: Enrollment[] }) {
     },
   ];
   return (
-    <Card title="سابقه (دانش‌آموزانی که از این کلاس رفته‌اند)">
+    <Card className="soft" title="سابقه (دانش‌آموزانی که از این کلاس رفته‌اند)">
       <Flex vertical>
         <Table<Enrollment> {...tableDefaults} rowKey="id" columns={columns} dataSource={history} />
       </Flex>

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import schemas
@@ -8,13 +8,22 @@ from ..deps import require_role
 from ..models import (
     ClassRoom,
     ClassSubject,
+    Criterion,
+    CriterionScore,
     Enrollment,
     EnrollmentStatus,
     Role,
     Score,
     User,
 )
-from ..services import build_report, build_sheet, get_or_404, load_class_subject, score_out
+from ..services import (
+    build_rating_sheet,
+    build_report,
+    build_sheet,
+    get_or_404,
+    load_class_subject,
+    score_out,
+)
 
 router = APIRouter(prefix="/teacher", tags=["teacher"])
 teacher_only = require_role(Role.teacher)
@@ -57,16 +66,49 @@ def my_assignments(user: User = Depends(teacher_only), db: Session = Depends(get
         .options(
             selectinload(ClassSubject.subject),
             selectinload(ClassSubject.class_room).selectinload(ClassRoom.grade),
+            selectinload(ClassSubject.class_room).selectinload(ClassRoom.unit),
             selectinload(ClassSubject.class_room).selectinload(ClassRoom.academic_year),
             selectinload(ClassSubject.class_room).selectinload(ClassRoom.enrollments),
         )
     ).all()
+    ids = [cs.id for cs in rows]
+    criteria_count = dict(
+        db.execute(
+            select(Criterion.subject_id, func.count(Criterion.id)).group_by(Criterion.subject_id)
+        ).all()
+    )
+    score_stats = {
+        cs_id: (n, avg)
+        for cs_id, n, avg in db.execute(
+            select(Score.class_subject_id, func.count(Score.id), func.avg(Score.value))
+            .where(Score.class_subject_id.in_(ids))
+            .group_by(Score.class_subject_id)
+        )
+    }
+    rated = dict(
+        db.execute(
+            select(CriterionScore.class_subject_id, func.count(CriterionScore.id))
+            .join(Enrollment, Enrollment.id == CriterionScore.enrollment_id)
+            .where(
+                CriterionScore.class_subject_id.in_(ids),
+                Enrollment.status == EnrollmentStatus.active,
+            )
+            .group_by(CriterionScore.class_subject_id)
+        ).all()
+    )
     out = [
         schemas.AssignmentOut(
             class_subject_id=cs.id,
             class_id=cs.class_id,
             class_name=cs.class_room.name,
             grade_name=cs.class_room.grade.name,
+            unit_name=cs.class_room.unit.name if cs.class_room.unit else None,
+            criteria_count=criteria_count.get(cs.subject_id, 0),
+            rated_count=rated.get(cs.id, 0),
+            score_count=score_stats.get(cs.id, (0, None))[0],
+            average=(
+                round(float(score_stats[cs.id][1]), 2) if score_stats.get(cs.id) else None
+            ),
             year_name=cs.class_room.academic_year.name,
             is_current_year=cs.class_room.academic_year.is_current,
             subject_name=cs.subject.name,
@@ -84,6 +126,50 @@ def assignment_sheet(
     class_subject_id: int, user: User = Depends(teacher_only), db: Session = Depends(get_db)
 ):
     return build_sheet(db, own_class_subject(db, class_subject_id, user))
+
+
+@router.get("/assignments/{class_subject_id}/ratings", response_model=schemas.RatingSheetOut)
+def assignment_ratings(
+    class_subject_id: int, user: User = Depends(teacher_only), db: Session = Depends(get_db)
+):
+    return build_rating_sheet(db, own_class_subject(db, class_subject_id, user))
+
+
+@router.put("/ratings", response_model=schemas.RatingSheetOut)
+def save_ratings(
+    data: schemas.RatingBulkIn, user: User = Depends(teacher_only), db: Session = Depends(get_db)
+):
+    """Set (or clear, with value=None) descriptive ratings of many students at once."""
+    cs = own_class_subject(db, data.class_subject_id, user)
+    criteria = set(
+        db.scalars(select(Criterion.id).where(Criterion.subject_id == cs.subject_id)).all()
+    )
+    existing = {
+        (r.enrollment_id, r.criterion_id): r
+        for r in db.scalars(select(CriterionScore).where(CriterionScore.class_subject_id == cs.id))
+    }
+    checked: set[int] = set()
+    for item in data.items:
+        if item.criterion_id not in criteria:
+            raise HTTPException(400, "مورد ارزشیابی متعلق به این درس نیست")
+        if item.enrollment_id not in checked:
+            active_enrollment(db, item.enrollment_id, cs)
+            checked.add(item.enrollment_id)
+        row = existing.get((item.enrollment_id, item.criterion_id))
+        if item.value is None:
+            if row:
+                db.delete(row)
+            continue
+        if row is None:
+            row = CriterionScore(
+                enrollment_id=item.enrollment_id,
+                criterion_id=item.criterion_id,
+                class_subject_id=cs.id,
+            )
+            db.add(row)
+        row.value, row.note, row.teacher_id = item.value, item.note or None, user.id
+    db.commit()
+    return build_rating_sheet(db, cs)
 
 
 @router.post("/scores", response_model=schemas.ScoreOut, status_code=201)

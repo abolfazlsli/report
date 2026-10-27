@@ -21,6 +21,7 @@ class UserBrief(ORM):
     id: int
     username: str
     full_name: str
+    avatar_version: int | None = None
 
 
 class UserOut(UserBrief):
@@ -29,6 +30,12 @@ class UserOut(UserBrief):
     is_active: bool
     current_class_id: int | None = None
     current_class: str | None = None
+    current_unit: str | None = None
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=4)
 
 
 class TokenOut(BaseModel):
@@ -91,20 +98,63 @@ class SubjectOut(ORM):
     name: str
 
 
+class UnitIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=255)
+
+
+class UnitOut(ORM):
+    id: int
+    name: str
+    description: str | None = None
+    class_count: int = 0
+    student_count: int = 0
+
+
+class UnitBrief(ORM):
+    id: int
+    name: str
+
+
+class CriterionIn(BaseModel):
+    subject_id: int
+    title: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=255)
+    order: int = 0
+
+
+class CriterionUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=255)
+    order: int | None = None
+
+
+class CriterionOut(ORM):
+    id: int
+    subject_id: int
+    title: str
+    description: str | None = None
+    order: int
+    used_count: int = 0
+
+
 class ClassIn(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     grade_id: int
+    unit_id: int
     academic_year_id: int
 
 
 class ClassUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=50)
+    unit_id: int | None = None
 
 
 class ClassOut(ORM):
     id: int
     name: str
     grade: GradeOut
+    unit: UnitBrief | None = None
     academic_year: YearOut
     student_count: int = 0
 
@@ -198,6 +248,14 @@ class ScoreOut(ORM):
 # ---------- report card ----------
 
 
+class RatingOut(BaseModel):
+    criterion_id: int
+    title: str
+    description: str | None = None
+    value: int | None  # 1..5, None = not rated yet
+    note: str | None = None
+
+
 class ReportSubject(BaseModel):
     class_subject_id: int
     subject_id: int
@@ -205,6 +263,9 @@ class ReportSubject(BaseModel):
     teacher_name: str | None
     scores: list[ScoreOut]
     average: float | None
+    ratings: list[RatingOut] = []
+    rating_average: float | None = None
+    class_average: float | None = None
 
 
 class ReportEnrollment(BaseModel):
@@ -213,17 +274,23 @@ class ReportEnrollment(BaseModel):
     class_name: str
     grade_name: str
     grade_level: int
+    unit_name: str | None = None
     year_name: str
     status: EnrollmentStatus
     started_at: dt.date
     ended_at: dt.date | None
     subjects: list[ReportSubject]
     average: float | None
+    class_average: float | None = None
+    rank: int | None = None
+    class_size: int = 0
 
 
 class ReportOut(BaseModel):
     student: UserBrief
+    national_code: str | None = None
     current_class: str | None
+    current_unit: str | None = None
     enrollments: list[ReportEnrollment]
 
 
@@ -249,11 +316,47 @@ class SheetOut(BaseModel):
     students: list[SheetStudent]
 
 
+# ---------- descriptive evaluation sheet ----------
+
+
+class RatingSheetStudent(BaseModel):
+    enrollment_id: int
+    student: UserBrief
+    status: EnrollmentStatus
+    ratings: dict[int, int]  # criterion_id -> value
+    notes: dict[int, str] = {}
+
+
+class RatingSheetOut(BaseModel):
+    class_subject_id: int
+    subject_name: str
+    criteria: list[CriterionOut]
+    students: list[RatingSheetStudent]
+
+
+class RatingItem(BaseModel):
+    enrollment_id: int
+    criterion_id: int
+    # None clears the rating
+    value: int | None = Field(default=None, ge=1, le=5)
+    note: str | None = Field(default=None, max_length=255)
+
+
+class RatingBulkIn(BaseModel):
+    class_subject_id: int
+    items: list[RatingItem] = Field(min_length=1)
+
+
 class AssignmentOut(BaseModel):
     class_subject_id: int
     class_id: int
     class_name: str
     grade_name: str
+    unit_name: str | None = None
+    criteria_count: int = 0
+    rated_count: int = 0
+    average: float | None = None
+    score_count: int = 0
     year_name: str
     is_current_year: bool
     subject_name: str

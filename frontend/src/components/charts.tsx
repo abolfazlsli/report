@@ -201,3 +201,92 @@ export function AverageBars({
     </div>
   );
 }
+
+/** Two measures on the same 0..20 scale, side by side per category (e.g. me vs class). */
+export function CompareBars({
+  data,
+  series,
+  height = 260,
+  max = 20,
+}: {
+  data: Record<string, string | number | null>[];
+  series: { key: string; name: string; color: string }[];
+  height?: number;
+  max?: number;
+}) {
+  const ticks = max === 20 ? Y_TICKS : [0, 1, 2, 3, 4, 5];
+  return (
+    <>
+      <Legend items={series} />
+      <div dir="ltr" style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 4, bottom: 4, left: 4 }} barGap={2}>
+            <CartesianGrid vertical={false} stroke="var(--line)" />
+            <XAxis dataKey="label" reversed tick={axisTick} tickLine={false} axisLine={{ stroke: "var(--axis)" }} interval={0} />
+            <YAxis
+              orientation="right"
+              domain={[0, max]}
+              ticks={ticks}
+              tickFormatter={(v) => faNum(v)}
+              tick={axisTick}
+              tickLine={false}
+              axisLine={false}
+              width={28}
+            />
+            <Tooltip
+              cursor={{ fill: "var(--surface-2)" }}
+              content={({ active, payload, label }) =>
+                active && payload?.length ? (
+                  <TooltipBox>
+                    <div className="mb-1 font-medium text-ink">{String(label)}</div>
+                    {payload.map((p) => (
+                      <div key={String(p.dataKey)} className="flex items-center gap-2 text-ink-2">
+                        <span className="size-2 rounded-full" style={{ background: p.color }} />
+                        <span>{p.name}</span>
+                        <span className="tabular ms-auto ps-3 font-semibold text-ink">
+                          {p.value === null || p.value === undefined ? "—" : faNum(Number(p.value))}
+                        </span>
+                      </div>
+                    ))}
+                  </TooltipBox>
+                ) : null
+              }
+            />
+            {series.map((s) => (
+              <Bar key={s.key} dataKey={s.key} name={s.name} fill={s.color} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </>
+  );
+}
+
+/** Horizontal share bar for status levels; every segment carries its label and count. */
+export function LevelBar({ items }: { items: { key: string; label: string; value: number; color: string }[] }) {
+  const total = items.reduce((n, i) => n + i.value, 0);
+  if (!total) return null;
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 2, height: 14, borderRadius: 7, overflow: "hidden" }} role="img" aria-label="توزیع سطح نمرات">
+        {items
+          .filter((i) => i.value)
+          .map((i) => (
+            <div key={i.key} title={`${i.label}: ${faNum(i.value)}`} style={{ flex: i.value, background: i.color }} />
+          ))}
+      </div>
+      <ul style={{ listStyle: "none", padding: 0, margin: "14px 0 0", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10 }}>
+        {items.map((i) => (
+          <li key={i.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink-2)" }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: i.color }} />
+            {i.label}
+            <span className="tabular" style={{ marginInlineStart: "auto", color: "var(--ink)", fontWeight: 600 }}>
+              {faNum(i.value)}
+              <span style={{ color: "var(--muted)", fontWeight: 400 }}> ({faNum(Math.round((i.value / total) * 100))}٪)</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

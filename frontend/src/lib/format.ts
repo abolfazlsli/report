@@ -50,3 +50,29 @@ export function scoreLevel(v: number): { level: Level; label: string } {
   if (v >= 10) return { level: "warning", label: "قابل قبول" };
   return { level: "critical", label: "نیاز به تلاش" };
 }
+
+/** Labels of the 1..5 descriptive rating scale. */
+export const RATING: Record<1 | 2 | 3 | 4 | 5, string> = {
+  1: "نیاز به تلاش بیشتر",
+  2: "قابل قبول",
+  3: "خوب",
+  4: "خیلی خوب",
+  5: "عالی",
+};
+
+export function ratingLevel(v: number): Level {
+  if (v >= 4) return "good";
+  if (v >= 3) return "ok";
+  if (v >= 2) return "warning";
+  return "critical";
+}
+
+export const LEVEL_LABEL: Record<Level, string> = {
+  good: "خیلی خوب",
+  ok: "خوب",
+  warning: "قابل قبول",
+  critical: "نیاز به تلاش",
+};
+
+/** Latin digits -> Persian digits, keeping the text as-is (e.g. a national code with a leading 0). */
+export const faDigits = (s: string) => s.replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]);

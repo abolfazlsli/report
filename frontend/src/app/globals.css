@@ -1,21 +1,27 @@
 /*
  * Tailwind is used only for layout utilities (no preflight, so it never
  * restyles antd components). Component look & feel comes from the antd theme
- * in providers.tsx; the tokens below are for the charts and small custom bits.
+ * in providers.tsx; the tokens below are for the shell, charts and custom bits.
  */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
 :root {
-  --page: #f6f6f3;
-  --surface: #fcfcfb;
-  --surface-2: #f0efec;
-  --ink: #0b0b0b;
-  --ink-2: #52514e;
-  --muted: #898781;
-  --line: #e1e0d9;
-  --axis: #c3c2b7;
+  --page: #f4f6fb;
+  --surface: #ffffff;
+  --surface-2: #f1f4f9;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --muted: #8a94a8;
+  --line: #e5e9f2;
+  --axis: #c5ccdb;
+  --primary: #4f46e5;
+  --primary-soft: #eef0ff;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.1);
+  --hero: linear-gradient(120deg, #4338ca 0%, #6d28d9 55%, #9333ea 100%);
+  --sider: linear-gradient(180deg, #17153b 0%, #1e1b4b 45%, #2e1065 100%);
 
   /* status (fixed, always paired with a label) */
   --good: #0ca30c;
@@ -37,13 +43,18 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --surface-2: #242423;
-    --ink: #f0efec;
-    --ink-2: #c3c2b7;
-    --line: #2c2c2a;
-    --axis: #383835;
+    --page: #0a0f1e;
+    --surface: #111a2e;
+    --surface-2: #18223a;
+    --ink: #e7eaf3;
+    --ink-2: #aab3c8;
+    --muted: #6f7a93;
+    --line: #232f4b;
+    --axis: #34405e;
+    --primary: #818cf8;
+    --primary-soft: #1d2147;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
     --ok: #3987e5;
     --series-1: #3987e5;
     --series-2: #d95926;
@@ -58,13 +69,18 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0d0d0d;
-  --surface: #1a1a19;
-  --surface-2: #242423;
-  --ink: #f0efec;
-  --ink-2: #c3c2b7;
-  --line: #2c2c2a;
-  --axis: #383835;
+  --page: #0a0f1e;
+  --surface: #111a2e;
+  --surface-2: #18223a;
+  --ink: #e7eaf3;
+  --ink-2: #aab3c8;
+  --muted: #6f7a93;
+  --line: #232f4b;
+  --axis: #34405e;
+  --primary: #818cf8;
+  --primary-soft: #1d2147;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
   --ok: #3987e5;
   --series-1: #3987e5;
   --series-2: #d95926;
@@ -84,6 +100,7 @@
   --color-ink-2: var(--ink-2);
   --color-muted: var(--muted);
   --color-line: var(--line);
+  --color-primary: var(--primary);
 }
 
 body {
@@ -99,4 +116,112 @@ body {
 .recharts-wrapper:focus,
 .recharts-surface:focus {
   outline: none;
+}
+
+/* ---------- shell ---------- */
+
+.app-sider {
+  background: var(--sider) !important;
+}
+.app-sider .ant-menu {
+  background: transparent;
+}
+.sider-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 20px 18px;
+  color: #fff;
+}
+.sider-logo {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  color: #fff;
+  font-size: 20px;
+  box-shadow: 0 6px 16px rgba(129, 140, 248, 0.4);
+  flex-shrink: 0;
+}
+.sider-user {
+  margin: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.app-header {
+  backdrop-filter: saturate(180%) blur(12px);
+  background: color-mix(in srgb, var(--surface) 82%, transparent) !important;
+}
+
+/* ---------- cards & hero ---------- */
+
+.ant-card.soft {
+  box-shadow: var(--shadow);
+  border-color: var(--line);
+}
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  padding: 24px 28px;
+  color: #fff;
+  background: var(--hero);
+  box-shadow: 0 12px 32px rgba(79, 70, 229, 0.25);
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: -60px;
+  top: -80px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 70%);
+  pointer-events: none;
+}
+.hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 12px;
+}
+.stat-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.lift {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* rating dots (1..5) */
+.rating-dots {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+}
+.rating-dots > span {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--line);
 }

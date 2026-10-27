@@ -10,17 +10,20 @@ from datetime import date, timedelta
 
 from sqlalchemy import select
 
-from .database import Base, SessionLocal, engine
+from .database import SessionLocal, init_schema
 from .models import (
     AcademicYear,
     ClassRoom,
     ClassSubject,
+    Criterion,
+    CriterionScore,
     Enrollment,
     EnrollmentStatus,
     Grade,
     Role,
     Score,
     Subject,
+    Unit,
     User,
 )
 from .security import hash_password
@@ -67,9 +70,11 @@ def seed_demo(db):
         for i, n in enumerate(["اول", "دوم", "سوم", "چهارم", "پنجم", "ششم"])
     ]
     subjects = {n: Subject(name=n) for n in ["علوم", "ریاضی", "فارسی", "قرآن", "هدیه‌های آسمان"]}
+    unit_a = Unit(name="واحد ۱ - دبستان دخترانه", description="پایه‌های اول تا سوم")
+    unit_b = Unit(name="واحد ۲ - دبستان پسرانه", description="پایه‌های اول تا ششم")
     past = AcademicYear(name="1404-1405")
     current = AcademicYear(name="1405-1406", is_current=True)
-    db.add_all([*grades, *subjects.values(), past, current])
+    db.add_all([*grades, *subjects.values(), unit_a, unit_b, past, current])
     db.flush()
 
     t_science = get_or_create_user(db, "teacher1", "مریم احمدی", Role.teacher, "teacher123")
@@ -84,8 +89,35 @@ def seed_demo(db):
         )
     ]
 
-    def make_class(name, grade, year):
-        c = ClassRoom(name=name, grade_id=grade.id, academic_year_id=year.id)
+    criteria = {
+        "علوم": ["مشاهده و آزمایش", "پرسشگری", "کار گروهی"],
+        "ریاضی": ["حل مسئله", "محاسبه ذهنی", "دقت و نظم"],
+        "فارسی": ["روخوانی", "املا", "درک مطلب", "نگارش"],
+    }
+    criteria_rows = {
+        sname: [
+            Criterion(subject_id=subjects[sname].id, title=t, order=i)
+            for i, t in enumerate(titles)
+        ]
+        for sname, titles in criteria.items()
+    }
+    db.add_all([c for rows in criteria_rows.values() for c in rows])
+    db.flush()
+
+    def add_ratings(enrollment, class_subject, teacher, sname):
+        for c in criteria_rows[sname]:
+            db.add(
+                CriterionScore(
+                    enrollment_id=enrollment.id,
+                    criterion_id=c.id,
+                    class_subject_id=class_subject.id,
+                    teacher_id=teacher.id,
+                    value=rng.choice([3, 4, 4, 5, 5]),
+                )
+            )
+
+    def make_class(name, grade, year, unit=unit_a):
+        c = ClassRoom(name=name, grade_id=grade.id, unit_id=unit.id, academic_year_id=year.id)
         db.add(c)
         db.flush()
         css = {}
@@ -100,7 +132,7 @@ def seed_demo(db):
     c1, c1_subjects = make_class("الف", grades[0], past)
     # This year: grade 2.
     c2, c2_subjects = make_class("الف", grades[1], current)
-    make_class("ب", grades[1], current)
+    make_class("ب", grades[1], current, unit_b)
 
     for s in students:
         old = Enrollment(
@@ -117,6 +149,7 @@ def seed_demo(db):
         db.flush()
         for sname, cs in c1_subjects.items():
             add_scores(db, old, cs, teachers[sname], date(2025, 10, 5), 9, rng)
+            add_ratings(old, cs, teachers[sname], sname)
         for sname, cs in c2_subjects.items():
             add_scores(db, new, cs, teachers[sname], date(2026, 9, 28), 1, rng)
 
@@ -124,7 +157,7 @@ def seed_demo(db):
 
 
 def main():
-    Base.metadata.create_all(engine)
+    init_schema()
     with SessionLocal() as db:
         get_or_create_user(db, "admin", "مدیر سامانه", Role.admin, "admin123")
         if "--bare" not in sys.argv:
