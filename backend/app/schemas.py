@@ -49,6 +49,7 @@ class UserCreate(BaseModel):
     full_name: str = Field(min_length=2, max_length=120)
     password: str = Field(min_length=4)
     role: Role
+    scope_id : str
     national_code: str | None = None
 
 
@@ -361,3 +362,16 @@ class AssignmentOut(BaseModel):
     is_current_year: bool
     subject_name: str
     student_count: int
+
+
+
+class CreateScopeDto (BaseModel) :
+    scope_name : str 
+    caption : str | None
+
+
+
+
+class ScopeOut (ORM) :
+    name : str
+    caption : str | None

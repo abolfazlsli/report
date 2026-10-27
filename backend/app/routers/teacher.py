@@ -15,6 +15,7 @@ from ..models import (
     Role,
     Score,
     User,
+    Scope
 )
 from ..services import (
     build_rating_sheet,

@@ -20,6 +20,7 @@ from datetime import date, datetime
 from sqlalchemy import (
     Date,
     DateTime,
+    Integer ,
     Enum,
     CheckConstraint,
     ForeignKey,
@@ -42,11 +43,64 @@ class Role(str, enum.Enum):
     student = "student"
 
 
+class Status(str , enum.Enum) :
+    reject = "reject"
+    acsept = "acsept"
+
+
+import uuid
+
+class BasicTable(Base):
+    __abstract__ = True
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    public_id: Mapped[str] = mapped_column(
+        String(36),
+        unique=True,
+        nullable=False,
+        default=lambda: str(uuid.uuid4()),
+        index=True,
+    )
+
+    row_status: Mapped[Status] = mapped_column(
+        Enum(Status, name="row_status"),
+        nullable=False,
+        default=Status.accept,
+    )
+
+    create_at: Mapped[DateTime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=func.now(),
+    )
+    update_at : Mapped[DateTime] = mapped_column(
+        DateTime , 
+        nullable=False ,
+        default=func.now() ,
+        onupdate=func.now()
+    )
+
 class EnrollmentStatus(str, enum.Enum):
     active = "active"  # currently studying in this class
     promoted = "promoted"  # moved on to another class
     completed = "completed"  # finished school (graduated)
     withdrawn = "withdrawn"  # removed from the class
+
+
+
+class Scope(BasicTable) :
+    __tablename__ = "scope"
+    name : Mapped[str] = mapped_column( 
+        nullable=False ,
+    ) # واحد ۷ 
+    caption : Mapped[str | None] = mapped_column(
+        nullable=True
+    )
+
 
 
 class User(Base):
@@ -58,6 +112,10 @@ class User(Base):
     national_code: Mapped[str | None] = mapped_column(String(20), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[Role] = mapped_column(Enum(Role, name="user_role"))
+    scope_id : Mapped[int] = mapped_column(
+        ForeignKey("scope.id") , 
+        nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -136,7 +194,10 @@ class ClassRoom(Base):
     academic_year_id: Mapped[int] = mapped_column(
         ForeignKey("academic_years.id", ondelete="RESTRICT")
     )
-
+    scope_id : Mapped[int] = mapped_column(
+        ForeignKey("scope.id") , 
+        nullable=False
+    )
     grade: Mapped[Grade] = relationship()
     unit: Mapped[Unit | None] = relationship()
     academic_year: Mapped[AcademicYear] = relationship()
@@ -220,6 +281,7 @@ class Score(Base):
     teacher: Mapped[User | None] = relationship()
 
 
+<<<<<<< HEAD
 class CriterionScore(Base):
     """Descriptive rating (1..5) of one student on one criterion, in one enrollment."""
 
@@ -246,3 +308,31 @@ class CriterionScore(Base):
 
     criterion: Mapped[Criterion] = relationship()
     teacher: Mapped[User | None] = relationship()
+=======
+class EvaluationCriteria (BasicTable) :
+    __tablename__ = "evaluation_criteria"
+
+    name : Mapped[str] = mapped_column(nullable=False)
+    scope_id : Mapped[int] = mapped_column(
+        ForeignKey("scope.id") , 
+        nullable=False,
+    )
+
+
+class EvaluationCriteriaScore(BasicTable) :
+    __tablename__ = "evaluation_criteria_score"
+
+    user_id  : Mapped[int] = mapped_column(
+        ForeignKey("users.id") ,
+        nullable=False
+    )
+
+    evaluation_criteria_id : Mapped[int] = mapped_column(
+        ForeignKey("evaluation_criteria.id")
+    )
+    score : Mapped[int] = mapped_column(
+        nullable=False
+    )  # from 0 to 5 
+    evaluation_criteria : Mapped[EvaluationCriteria] = relationship()
+    
+>>>>>>> 5baa8300a8ba1b7d6c03569c2c6f56c399bb43d6

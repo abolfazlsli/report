@@ -1,6 +1,7 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException , Body
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
@@ -48,6 +49,12 @@ def ensure_unique(db: Session, model, column, value, message: str, exclude_id: i
         raise HTTPException(400, message)
 
 
+def get_scope_by_public_id (db : Session , public_id : str) -> Scope :
+    out = db.query(Scope).filter(Scope.public_id == public_id).one_or_none()
+    if not out :
+        raise "cant find any data"
+    return out
+
 def class_query():
     return select(ClassRoom).options(
         selectinload(ClassRoom.grade),
@@ -56,6 +63,9 @@ def class_query():
         selectinload(ClassRoom.enrollments),
     )
 
+
+def scope_out (scope : Scope) :
+    return schemas.ScopeOut.model_validate(scope)
 
 # ======================= dashboard =======================
 
@@ -210,11 +220,13 @@ def create_user(data: schemas.UserCreate, db: Session = Depends(get_db)):
     ensure_unique(db, User, User.username, username, "این نام کاربری قبلاً ثبت شده است")
     if data.national_code:
         ensure_unique(db, User, User.national_code, data.national_code, "این کد ملی قبلاً ثبت شده است")
+    scope = get_scope_by_public_id(db , data.scope_id)
     user = User(
         username=username,
         full_name=data.full_name.strip(),
         national_code=data.national_code or None,
         password_hash=hash_password(data.password),
+        scope_id = scope.id,
         role=data.role,
     )
     db.add(user)
@@ -241,6 +253,67 @@ def update_user(user_id: int, data: schemas.UserUpdate, db: Session = Depends(ge
         setattr(user, field, value)
     db.commit()
     return user_out(user, current_classes(db, [user.id]).get(user.id))
+
+
+
+@router.post("/create-scope")
+async def create_scope(
+    data : schemas.CreateScopeDto,
+    db : Session = Depends(get_db) ,
+    me : User = Depends(admin_only) ,
+) :
+    scope = Scope(
+        name = data.name , 
+        caption = data.caption if data.caption else None
+    )
+    db.add(scope)
+    db.commit()
+    return JSONResponse(
+        content={
+            "result" : "scope created"
+        } , 
+        status_code=200
+    )
+
+
+@router.put("/edit-scope/{scope_id}")
+async def edit_scope (
+    scope_id : str ,
+    db : Session = Depends(get_db) ,
+    user : User = Depends(admin_only) ,
+    data : schemas.CreateScopeDto = Body()
+) :
+    scope = get_scope_by_public_id(db , scope_id)
+    scope.name = data.scope_name
+    scope.caption = data.caption
+    db.commit()
+    return JSONResponse( content={
+        "result" : "scope edited"
+    } , status_code=200
+    )
+
+@router.get("/scopes")
+async def get_scopes(
+    db : Session = Depends(get_db) , 
+    user : User = Depends(admin_only)
+) :
+    return
+
+
+
+@router.get("/scope/{scope_id}")
+async def get_scope_by_id (
+    scope_id : str ,
+    db : Session = Depends(get_db) , 
+    user : User = Depends(admin_only) , 
+) : 
+    scope = get_scope_by_public_id(db , scope_id)
+    return JSONResponse(
+        content={
+            "result" : scope_out(scope)
+        } ,
+        status_code=200
+    )
 
 
 @router.delete("/users/{user_id}", status_code=204)
