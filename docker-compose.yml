@@ -38,7 +38,7 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8002
+        NEXT_PUBLIC_API_URL: https://core-report.besat.net
     container_name: report_frontend
     restart: unless-stopped
     depends_on:
