@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: report
       POSTGRES_DB: report
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - report_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -28,7 +28,7 @@ services:
       DATABASE_URL: postgresql+psycopg://report:report@db:5432/report
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-please-use-a-long-random-value}
       ACCESS_TOKEN_EXPIRE_MINUTES: 720
-      CORS_ORIGINS: '["http://localhost:3000" , ""]'
+      CORS_ORIGINS: '["http://localhost:3000" , "https://report.besat.net"]'
       # true = demo school with sample data on first start; false = admin account only
       SEED_DEMO: ${SEED_DEMO:-true}
     ports:
