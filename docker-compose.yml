@@ -28,23 +28,23 @@ services:
       DATABASE_URL: postgresql+psycopg://report:report@db:5432/report
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-please-use-a-long-random-value}
       ACCESS_TOKEN_EXPIRE_MINUTES: 720
-      CORS_ORIGINS: '["http://localhost:3000"]'
+      CORS_ORIGINS: '["http://localhost:3000" , ""]'
       # true = demo school with sample data on first start; false = admin account only
       SEED_DEMO: ${SEED_DEMO:-true}
     ports:
-      - "8060:8060"
+      - "8002:8060"
 
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8060
+        NEXT_PUBLIC_API_URL: http://localhost:8002
     container_name: report_frontend
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "3000:3000"
+      - "3002:3000"
 
 volumes:
   report_pgdata:
