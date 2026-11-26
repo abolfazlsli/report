@@ -14,8 +14,7 @@ from ..models import (
     EnrollmentStatus,
     Role,
     Score,
-    User,
-    Scope
+    User
 )
 from ..services import (
     build_rating_sheet,

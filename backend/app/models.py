@@ -45,7 +45,7 @@ class Role(str, enum.Enum):
 
 class Status(str , enum.Enum) :
     reject = "reject"
-    acsept = "acsept"
+    accept = "accept"
 
 
 import uuid
@@ -92,14 +92,14 @@ class EnrollmentStatus(str, enum.Enum):
 
 
 
-class Scope(BasicTable) :
-    __tablename__ = "scope"
-    name : Mapped[str] = mapped_column( 
-        nullable=False ,
-    ) # واحد ۷ 
-    caption : Mapped[str | None] = mapped_column(
-        nullable=True
-    )
+# class Scope(BasicTable) :
+#     __tablename__ = "scope"
+#     name : Mapped[str] = mapped_column( 
+#         nullable=False ,
+#     ) # واحد ۷ 
+#     caption : Mapped[str | None] = mapped_column(
+#         nullable=True
+#     )
 
 
 
@@ -112,10 +112,10 @@ class User(Base):
     national_code: Mapped[str | None] = mapped_column(String(20), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[Role] = mapped_column(Enum(Role, name="user_role"))
-    scope_id : Mapped[int] = mapped_column(
-        ForeignKey("scope.id") , 
-        nullable=True
-    )
+    # scope_id : Mapped[int] = mapped_column(
+    #     ForeignKey("scope.id") , 
+    #     nullable=True
+    # )
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -194,10 +194,10 @@ class ClassRoom(Base):
     academic_year_id: Mapped[int] = mapped_column(
         ForeignKey("academic_years.id", ondelete="RESTRICT")
     )
-    scope_id : Mapped[int] = mapped_column(
-        ForeignKey("scope.id") , 
-        nullable=False
-    )
+    # scope_id : Mapped[int] = mapped_column(
+    #     ForeignKey("scope.id") , 
+    #     nullable=False
+    # )
     grade: Mapped[Grade] = relationship()
     unit: Mapped[Unit | None] = relationship()
     academic_year: Mapped[AcademicYear] = relationship()
