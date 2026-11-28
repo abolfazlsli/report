@@ -8,6 +8,9 @@ import random
 import sys
 from datetime import date, timedelta
 
+from pathlib import Path
+from openpyxl import load_workbook
+
 from sqlalchemy import select
 
 from .database import SessionLocal, init_schema
@@ -41,6 +44,143 @@ def get_or_create_user(db, username, full_name, role, password):
         db.add(user)
         db.flush()
     return user
+
+
+
+
+def import_students(db):
+    excel_file = Path(__file__).resolve().parent / "students.xlsx"
+
+    print("Excel path:", excel_file)
+    print("Excel exists:", excel_file.exists())
+
+    if not excel_file.exists():
+        print("Students Excel not found!")
+        return
+
+    workbook = load_workbook(
+        excel_file,
+        read_only=True,
+        data_only=True,
+    )
+
+    sheet = workbook.active
+
+    print("Sheet:", sheet.title)
+    print("Max row:", sheet.max_row)
+    print("Max column:", sheet.max_column)
+
+    inserted = 0
+    skipped = 0
+    seen = set()
+
+    def normalize_code(value):
+        if value is None:
+            return None
+
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+
+        return str(value).strip()
+
+    try:
+        for row_number, row in enumerate(
+            sheet.iter_rows(min_row=2, values_only=True),
+            start=2,
+        ):
+            row = list(row)
+
+            print(f"\n--- ROW {row_number} ---")
+            print("RAW:", row)
+
+            if len(row) < 8:
+                row += [None] * (8 - len(row))
+
+            (
+                national_code,
+                first_name,
+                last_name,
+                father_name,
+                class_name,
+                father_phone,
+                mother_phone,
+                grade,
+            ) = row[:8]
+
+            national_code = normalize_code(national_code)
+
+            print("CODE:", repr(national_code))
+            print("FIRST:", repr(first_name))
+            print("LAST:", repr(last_name))
+
+            if not national_code:
+                print("SKIP REASON: national_code is empty")
+                skipped += 1
+                continue
+
+            if not first_name or not last_name:
+                print("SKIP REASON: first_name or last_name is empty")
+                skipped += 1
+                continue
+
+            if national_code in seen:
+                print("SKIP REASON: duplicate in Excel")
+                skipped += 1
+                continue
+
+            seen.add(national_code)
+
+            existing = db.scalar(
+                select(User).where(
+                    User.national_code == national_code
+                )
+            )
+
+            if existing:
+                print("SKIP REASON: national_code already exists")
+                skipped += 1
+                continue
+
+            existing = db.scalar(
+                select(User).where(
+                    User.username == national_code
+                )
+            )
+
+            if existing:
+                print("SKIP REASON: username already exists")
+                skipped += 1
+                continue
+
+            full_name = f"{first_name} {last_name}".strip()
+
+            student = User(
+                username=national_code,
+                full_name=full_name,
+                national_code=national_code,
+                password_hash=hash_password(national_code),
+                role=Role.student,
+                is_active=True,
+            )
+
+            db.add(student)
+            db.flush()
+
+            inserted += 1
+            print("SUCCESS:", full_name)
+
+    except Exception as e:
+        print("IMPORT ERROR:", repr(e))
+        raise
+
+    finally:
+        workbook.close()
+
+    print("\n========== IMPORT RESULT ==========")
+    print("Inserted:", inserted)
+    print("Skipped:", skipped)
+
+
 
 
 def add_scores(db, enrollment, class_subject, teacher, start: date, count: int, rng):
@@ -156,13 +296,25 @@ def seed_demo(db):
     print("Demo data created.")
 
 
+
 def main():
     init_schema()
+
     with SessionLocal() as db:
-        get_or_create_user(db, "admin", "مدیر سامانه", Role.admin, "admin123")
+        get_or_create_user(
+            db,
+            "admin",
+            "مدیر سامانه",
+            Role.admin,
+            "admin123",
+        )
+
         if "--bare" not in sys.argv:
             seed_demo(db)
+            import_students(db)
+
         db.commit()
+
     print("Done. Admin login: admin / admin123")
 
 
